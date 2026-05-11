@@ -10,13 +10,16 @@ from pathlib import Path
 
 try:
     import cv2
+    import numpy as np
 except ImportError:
     cv2 = None
+    np = None
 
 
 ROOT_DIR = Path(__file__).resolve().parent
 DEBUG_DIR = ROOT_DIR / "debug"
 LATEST_FRAME = DEBUG_DIR / "latest_frame.jpg"
+LATEST_COVER = DEBUG_DIR / "latest_cover.png"
 DEFAULT_CAMERA_SCAN_LIMIT = int(os.environ.get("CAMERA_SCAN_LIMIT", "6"))
 SAMPLE_FRAMES = {
     "song": {
@@ -282,9 +285,68 @@ def capture_frame(camera_indices):
     }
 
 
+def _selection_cover_quad(width, height):
+    # Current Phigros select screen cover region; library matching can replace this detector.
+    return [
+        [int(width * 0.492), int(height * 0.329)],
+        [int(width * 0.787), int(height * 0.312)],
+        [int(width * 0.746), int(height * 0.562)],
+        [int(width * 0.446), int(height * 0.562)],
+    ]
+
+
+def extract_song_cover(frame_path=LATEST_FRAME):
+    if cv2 is None or not frame_path.exists():
+        return None
+
+    frame = cv2.imread(str(frame_path), cv2.IMREAD_COLOR)
+    if frame is None:
+        return None
+
+    height, width = frame.shape[:2]
+    quad = _selection_cover_quad(width, height)
+    points = cv2.convexHull(np.array(quad, dtype="int32"))
+
+    mask = np.zeros((height, width), dtype="uint8")
+    cv2.fillConvexPoly(mask, points, 255)
+
+    x, y, crop_width, crop_height = cv2.boundingRect(points)
+    bgra = cv2.cvtColor(frame, cv2.COLOR_BGR2BGRA)
+    bgra[:, :, 3] = mask
+    cover = bgra[y : y + crop_height, x : x + crop_width]
+
+    DEBUG_DIR.mkdir(exist_ok=True)
+    cv2.imwrite(str(LATEST_COVER), cover)
+
+    return {
+        "ok": True,
+        "quad": quad,
+        "bbox": {
+            "x": x,
+            "y": y,
+            "width": crop_width,
+            "height": crop_height,
+        },
+        "url": f"/debug/latest_cover.png?t={int(time.time() * 1000)}",
+    }
+
+
+def match_cover_from_library(cover):
+    if not cover:
+        return None
+    return {
+        "matched": False,
+        "reason": "cover library is not implemented",
+    }
+
+
 def recognize_song(slot, capture):
     song = MOCK_SONGS[slot % len(MOCK_SONGS)].copy()
-    song["coverImage"] = capture.get("frameUrl")
+    cover = extract_song_cover() if capture.get("ok") else None
+    match = match_cover_from_library(cover)
+    song["coverImage"] = cover["url"] if cover else capture.get("frameUrl")
+    song["coverCrop"] = cover
+    song["coverMatch"] = match
     return song
 
 
