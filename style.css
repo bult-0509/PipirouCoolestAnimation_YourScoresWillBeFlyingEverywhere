@@ -69,6 +69,31 @@ body {
   color: #aaa;
 }
 
+.api-status {
+  max-width: 260px;
+  min-height: 34px;
+  padding: 8px 10px;
+  border-left: 3px solid rgba(255, 255, 255, 0.35);
+  background: rgba(255, 255, 255, 0.07);
+  color: #d8d8d8;
+  font-size: 0.86rem;
+  line-height: 1.35;
+}
+
+.api-status[data-mode="busy"] {
+  border-color: #29abe2;
+  color: #fff;
+}
+
+.api-status[data-mode="ok"] {
+  border-color: #8cc63f;
+}
+
+.api-status[data-mode="warn"] {
+  border-color: #f2b84b;
+  color: #ffe0a3;
+}
+
 .button-group {
   display: flex;
   flex-direction: column;
@@ -221,7 +246,10 @@ body {
 .dyn-cover {
   width: 128px;
   height: 72px;
-  background: linear-gradient(135deg, #444, #888);
+  background-color: #555;
+  background-image: linear-gradient(135deg, #444, #888);
+  background-position: center;
+  background-size: cover;
   border: 1px solid #fff;
   clip-path: polygon(19.3px 0, 100% 0, calc(100% - 19.3px) 100%, 0 100%);
   opacity: 0;
