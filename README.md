@@ -77,19 +77,21 @@ The sample image is copied to `debug/latest_frame.jpg` and returned through the
 same `capture.frameUrl` field as a real camera frame. This keeps the frontend,
 backend, and animation protocol testable even when no camera is available.
 
-## Song Cover Crop
+## Song Cover Normalization
 
-For `选歌识别`, the backend now extracts the song art parallelogram from the
-captured selection frame and writes it to:
+For `选歌识别`, the backend extracts the song art quadrilateral from the captured
+selection frame, normalizes it into the HUD's clean parallelogram shape, and writes
+it to:
 
 ```text
 debug/latest_cover.png
 ```
 
-The crop keeps the original parallelogram shape with a transparent background. It
-does not perspective-warp the art into a rectangle. The frontend receives this
-image as `song.coverImage`, so the flying HUD cover uses the extracted
-parallelogram instead of the whole camera frame.
+The output is not a rectangle: it is a transparent PNG whose visible area is a
+parallelogram matching the frontend HUD cover/score-frame angle. This removes the
+camera perspective distortion while preserving the Phigros-style slanted shape.
+The frontend receives this image as `song.coverImage`, so the flying HUD cover uses
+the normalized parallelogram instead of the whole camera frame.
 
 The future cover-library recognizer should replace `match_cover_from_library()`
 in `server.py`. Until that library exists, the server returns mock song metadata

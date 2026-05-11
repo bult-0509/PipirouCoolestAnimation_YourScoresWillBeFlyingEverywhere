@@ -21,6 +21,9 @@ DEBUG_DIR = ROOT_DIR / "debug"
 LATEST_FRAME = DEBUG_DIR / "latest_frame.jpg"
 LATEST_COVER = DEBUG_DIR / "latest_cover.png"
 DEFAULT_CAMERA_SCAN_LIMIT = int(os.environ.get("CAMERA_SCAN_LIMIT", "6"))
+NORMALIZED_COVER_WIDTH = 1280
+NORMALIZED_COVER_HEIGHT = 720
+COVER_SKEW_RATIO = 19.3 / 128
 SAMPLE_FRAMES = {
     "song": {
         "label": "Choose.jpg",
@@ -305,28 +308,46 @@ def extract_song_cover(frame_path=LATEST_FRAME):
 
     height, width = frame.shape[:2]
     quad = _selection_cover_quad(width, height)
-    points = cv2.convexHull(np.array(quad, dtype="int32"))
-
-    mask = np.zeros((height, width), dtype="uint8")
-    cv2.fillConvexPoly(mask, points, 255)
-
-    x, y, crop_width, crop_height = cv2.boundingRect(points)
     bgra = cv2.cvtColor(frame, cv2.COLOR_BGR2BGRA)
-    bgra[:, :, 3] = mask
-    cover = bgra[y : y + crop_height, x : x + crop_width]
+
+    target_width = NORMALIZED_COVER_WIDTH
+    target_height = NORMALIZED_COVER_HEIGHT
+    skew = int(target_width * COVER_SKEW_RATIO)
+    target_quad = [
+        [skew, 0],
+        [target_width - 1, 0],
+        [target_width - 1 - skew, target_height - 1],
+        [0, target_height - 1],
+    ]
+
+    matrix = cv2.getPerspectiveTransform(
+        np.array(quad, dtype="float32"),
+        np.array(target_quad, dtype="float32"),
+    )
+    cover = cv2.warpPerspective(
+        bgra,
+        matrix,
+        (target_width, target_height),
+        flags=cv2.INTER_CUBIC,
+        borderMode=cv2.BORDER_CONSTANT,
+        borderValue=(0, 0, 0, 0),
+    )
+
+    mask = np.zeros((target_height, target_width), dtype="uint8")
+    cv2.fillConvexPoly(mask, np.array(target_quad, dtype="int32"), 255)
+    cover[:, :, 3] = cv2.bitwise_and(cover[:, :, 3], mask)
 
     DEBUG_DIR.mkdir(exist_ok=True)
     cv2.imwrite(str(LATEST_COVER), cover)
 
     return {
         "ok": True,
-        "quad": quad,
-        "bbox": {
-            "x": x,
-            "y": y,
-            "width": crop_width,
-            "height": crop_height,
-        },
+        "sourceQuad": quad,
+        "targetQuad": target_quad,
+        "width": target_width,
+        "height": target_height,
+        "skew": skew,
+        "transform": "perspective-to-hud-parallelogram",
         "url": f"/debug/latest_cover.png?t={int(time.time() * 1000)}",
     }
 
