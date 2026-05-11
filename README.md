@@ -79,9 +79,10 @@ backend, and animation protocol testable even when no camera is available.
 
 ## Song Cover Normalization
 
-For `选歌识别`, the backend extracts the song art quadrilateral from the captured
-selection frame, normalizes it into the HUD's clean parallelogram shape, and writes
-it to:
+For `选歌识别`, the backend first tries to detect the song art quadrilateral from
+the captured selection frame with OpenCV edge/line detection. If that detection
+fails, it falls back to the current fixed Phigros select-screen ratio. The crop is
+then normalized into the HUD's clean parallelogram shape and written to:
 
 ```text
 debug/latest_cover.png
@@ -90,8 +91,10 @@ debug/latest_cover.png
 The output is not a rectangle: it is a transparent PNG whose visible area is a
 parallelogram matching the frontend HUD cover/score-frame angle. This removes the
 camera perspective distortion while preserving the Phigros-style slanted shape.
-The frontend receives this image as `song.coverImage`, so the flying HUD cover uses
-the normalized parallelogram instead of the whole camera frame.
+The frontend receives this image as `song.coverImage`, and it also receives the
+original-frame `coverCrop.sourceBBox`. During animation the browser shows the
+captured source frame and starts the flying cover from the detected source
+position, then flies the normalized parallelogram into the HUD slot.
 
 The future cover-library recognizer should replace `match_cover_from_library()`
 in `server.py`. Until that library exists, the server returns mock song metadata
@@ -124,7 +127,12 @@ Response:
     "name": "DESTRUCTION 3,2,1",
     "score": "09954320",
     "rating": "15.65",
-    "coverImage": "/debug/latest_frame.jpg?t=..."
+    "coverImage": "/debug/latest_cover.png?t=...",
+    "coverCrop": {
+      "detected": true,
+      "detectionMethod": "auto-hough-lines",
+      "sourceBBox": {"x": 1903, "y": 952, "width": 1274, "height": 737}
+    }
   },
   "recognitionMode": "mock-after-capture"
 }

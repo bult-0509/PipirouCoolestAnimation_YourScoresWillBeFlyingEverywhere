@@ -13,6 +13,8 @@ const refreshCamerasButton = document.getElementById('btn-refresh-cameras');
 const sampleSelect = document.getElementById('sample-select');
 const barsWrapper = document.getElementById('bars-wrapper');
 const dynLayer = document.getElementById('dynamic-layer');
+const sourceFrameLayer = document.getElementById('source-frame-layer');
+const sourceFrameImage = document.getElementById('source-frame-image');
 const summaryInfo = document.getElementById('summary-info');
 const summaryText = document.getElementById('summary-text');
 
@@ -148,7 +150,12 @@ function normalizeSong(input, slot) {
     name: input?.name || fallback.name,
     score: input?.score || fallback.score,
     rating: input?.rating || fallback.rating,
-    coverImage: input?.coverImage || null
+    coverImage: input?.coverImage || null,
+    coverCrop: input?.coverCrop || null,
+    coverMatch: input?.coverMatch || null,
+    sourceFrame: input?.sourceFrame || null,
+    sourceWidth: input?.sourceWidth || null,
+    sourceHeight: input?.sourceHeight || null
   };
 }
 
@@ -210,6 +217,62 @@ function coverStyle(song, opacity = null) {
   return styles.length > 0 ? ` style="${styles.join('; ')};"` : '';
 }
 
+function attachCaptureToSong(song, capture) {
+  if (!capture?.ok || !capture.frameUrl) {
+    return song;
+  }
+
+  song.sourceFrame = capture.frameUrl;
+  song.sourceWidth = capture.width;
+  song.sourceHeight = capture.height;
+  return song;
+}
+
+function hideSourceFrame() {
+  sourceFrameLayer?.classList.add('hidden');
+}
+
+async function showSourceFrame(song) {
+  if (!sourceFrameLayer || !sourceFrameImage || !song.sourceFrame || !song.sourceWidth || !song.sourceHeight) {
+    return false;
+  }
+
+  sourceFrameImage.src = song.sourceFrame;
+  sourceFrameLayer.classList.remove('hidden');
+
+  if (sourceFrameImage.decode) {
+    try {
+      await sourceFrameImage.decode();
+    } catch (_error) {
+      // Browser may reject decode for an already-loading image; layout math uses known frame size.
+    }
+  }
+  return true;
+}
+
+function framePixelRectToViewportRect(frameWidth, frameHeight, bbox) {
+  if (!frameWidth || !frameHeight || !bbox) {
+    return null;
+  }
+
+  const scale = Math.min(window.innerWidth / frameWidth, window.innerHeight / frameHeight);
+  const renderedWidth = frameWidth * scale;
+  const renderedHeight = frameHeight * scale;
+  const offsetX = (window.innerWidth - renderedWidth) / 2;
+  const offsetY = (window.innerHeight - renderedHeight) / 2;
+
+  return {
+    left: offsetX + bbox.x * scale,
+    top: offsetY + bbox.y * scale,
+    width: bbox.width * scale,
+    height: bbox.height * scale
+  };
+}
+
+function coverSourceRect(song) {
+  return framePixelRectToViewportRect(song.sourceWidth, song.sourceHeight, song.coverCrop?.sourceBBox);
+}
+
 function buildSongInfoHTML(song, slot, coverOpacity = '0') {
   return `
     <div class="info-inner" data-song-idx="${slot}">
@@ -248,11 +311,21 @@ function updateSummary() {
 }
 
 async function playSongAnimation(song, slot) {
+  await showSourceFrame(song);
+  const sourceRect = coverSourceRect(song);
+
   const el = document.createElement('div');
   el.className = 'dyn-element';
-  el.style.left = '20%';
-  el.style.top = '40%';
-  el.style.transform = 'translate(-50%, -50%) scale(1.5)';
+  if (sourceRect) {
+    el.style.left = (sourceRect.left + sourceRect.width / 2) + 'px';
+    el.style.top = (sourceRect.top + sourceRect.height / 2) + 'px';
+    const sourceScale = Math.max(sourceRect.width / 128, sourceRect.height / 72);
+    el.style.transform = `translate(-50%, -50%) scale(${sourceScale})`;
+  } else {
+    el.style.left = '20%';
+    el.style.top = '40%';
+    el.style.transform = 'translate(-50%, -50%) scale(1.5)';
+  }
 
   el.innerHTML = `
     <div class="cover-wrapper">
@@ -274,6 +347,7 @@ async function playSongAnimation(song, slot) {
   el.querySelector('.bottom-texts').style.opacity = '1';
 
   await sleep(1400);
+  hideSourceFrame();
   const targetBar = document.getElementById(`bar-${slot}`);
   const barContent = targetBar.querySelector('.bar-content');
 
@@ -373,7 +447,7 @@ document.getElementById('btn-1').addEventListener('click', async () => {
   try {
     const slot = songIndex;
     const result = await recognize('song', slot);
-    const song = normalizeSong(result.song, slot);
+    const song = attachCaptureToSong(normalizeSong(result.song, slot), result.capture);
     recognizedSongs[slot] = song;
 
     await playSongAnimation(song, slot);
@@ -441,6 +515,7 @@ document.getElementById('btn-3').addEventListener('click', async () => {
   songIndex = 0;
   scoreIndex = 0;
   summaryInfo.classList.add('hidden');
+  hideSourceFrame();
   updateStatus();
   setApiStatus('等待本地识别服务', 'idle');
   isAnimating = false;
@@ -532,6 +607,7 @@ document.getElementById('btn-5').addEventListener('click', async () => {
   recognizedSongs.length = 0;
   songIndex = 0;
   scoreIndex = 0;
+  hideSourceFrame();
   updateStatus();
   setApiStatus('等待本地识别服务', 'idle');
   isAnimating = false;

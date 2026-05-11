@@ -289,13 +289,188 @@ def capture_frame(camera_indices):
 
 
 def _selection_cover_quad(width, height):
-    # Current Phigros select screen cover region; library matching can replace this detector.
+    # Fallback for the current Phigros select screen cover region.
     return [
         [int(width * 0.492), int(height * 0.329)],
         [int(width * 0.787), int(height * 0.312)],
         [int(width * 0.746), int(height * 0.562)],
         [int(width * 0.446), int(height * 0.562)],
     ]
+
+
+def _normalize_angle(angle):
+    while angle <= -90:
+        angle += 180
+    while angle > 90:
+        angle -= 180
+    return angle
+
+
+def _line_coefficients(segment):
+    x1, y1, x2, y2 = segment["x1"], segment["y1"], segment["x2"], segment["y2"]
+    a = y1 - y2
+    b = x2 - x1
+    c = x1 * y2 - x2 * y1
+    return a, b, c
+
+
+def _line_intersection(first, second):
+    a1, b1, c1 = _line_coefficients(first)
+    a2, b2, c2 = _line_coefficients(second)
+    determinant = a1 * b2 - a2 * b1
+    if abs(determinant) < 1e-6:
+        return None
+    x = (b1 * c2 - b2 * c1) / determinant
+    y = (c1 * a2 - c2 * a1) / determinant
+    return [int(round(x)), int(round(y))]
+
+
+def _shrink_quad(quad, factor=0.90):
+    center = np.mean(np.array(quad, dtype="float32"), axis=0)
+    points = []
+    for point in quad:
+        vector = np.array(point, dtype="float32") - center
+        adjusted = center + vector * factor
+        points.append([int(round(adjusted[0])), int(round(adjusted[1]))])
+    return points
+
+
+def _clean_detected_cover_quad(quad):
+    points = _shrink_quad(quad)
+    bbox = _quad_bbox(points)
+    right_inset = int(bbox["width"] * 0.08)
+    points[1][0] -= right_inset
+    points[2][0] -= right_inset
+    return points
+
+
+def _quad_bbox(quad):
+    xs = [point[0] for point in quad]
+    ys = [point[1] for point in quad]
+    left = min(xs)
+    top = min(ys)
+    right = max(xs)
+    bottom = max(ys)
+    return {
+        "x": int(left),
+        "y": int(top),
+        "width": int(right - left),
+        "height": int(bottom - top),
+    }
+
+
+def _valid_cover_quad(quad, width, height):
+    if not quad or len(quad) != 4:
+        return False
+
+    margin = max(width, height) * 0.03
+    for x, y in quad:
+        if x < -margin or x > width + margin or y < -margin or y > height + margin:
+            return False
+
+    bbox = _quad_bbox(quad)
+    if bbox["width"] < width * 0.20 or bbox["width"] > width * 0.55:
+        return False
+    if bbox["height"] < height * 0.12 or bbox["height"] > height * 0.40:
+        return False
+
+    area = abs(cv2.contourArea(np.array(quad, dtype="float32")))
+    return area > width * height * 0.03
+
+
+def detect_selection_cover_quad(frame):
+    height, width = frame.shape[:2]
+    fallback = _selection_cover_quad(width, height)
+
+    x0 = int(width * 0.40)
+    y0 = int(height * 0.26)
+    x1 = int(width * 0.90)
+    y1 = int(height * 0.62)
+    roi = frame[y0:y1, x0:x1]
+    if roi.size == 0:
+        return {"quad": fallback, "method": "fallback-fixed-ratio", "detected": False}
+
+    gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+    edges = cv2.Canny(blurred, 40, 120)
+    lines = cv2.HoughLinesP(
+        edges,
+        1,
+        np.pi / 180,
+        90,
+        minLineLength=int(width * 0.07),
+        maxLineGap=35,
+    )
+    if lines is None:
+        return {"quad": fallback, "method": "fallback-no-lines", "detected": False}
+
+    segments = []
+    for raw in lines[:, 0]:
+        lx1, ly1, lx2, ly2 = [int(value) for value in raw]
+        gx1, gy1 = lx1 + x0, ly1 + y0
+        gx2, gy2 = lx2 + x0, ly2 + y0
+        length = float(np.hypot(gx2 - gx1, gy2 - gy1))
+        if length <= 0:
+            continue
+        angle = _normalize_angle(float(np.degrees(np.arctan2(gy2 - gy1, gx2 - gx1))))
+        segments.append(
+            {
+                "x1": gx1,
+                "y1": gy1,
+                "x2": gx2,
+                "y2": gy2,
+                "mx": (gx1 + gx2) / 2,
+                "my": (gy1 + gy2) / 2,
+                "length": length,
+                "angle": angle,
+            }
+        )
+
+    horizontal = [
+        segment
+        for segment in segments
+        if abs(segment["angle"]) < 8 and segment["length"] > width * 0.08
+    ]
+    left_edges = [
+        segment
+        for segment in segments
+        if -85 < segment["angle"] < -55
+        and segment["length"] > height * 0.08
+        and segment["mx"] < width * 0.58
+    ]
+    right_edges = [
+        segment
+        for segment in segments
+        if -85 < segment["angle"] < -55
+        and segment["length"] > height * 0.08
+        and segment["mx"] > width * 0.70
+    ]
+
+    if not horizontal or not left_edges or not right_edges:
+        return {"quad": fallback, "method": "fallback-missing-edges", "detected": False}
+
+    def pick_near(candidates, expected_y):
+        return min(candidates, key=lambda segment: abs(segment["my"] - expected_y) - segment["length"] * 0.02)
+
+    top = pick_near(horizontal, height * 0.31)
+    bottom = pick_near(horizontal, height * 0.56)
+    left = max(left_edges, key=lambda segment: segment["length"])
+    right = max(right_edges, key=lambda segment: segment["length"])
+
+    quad = [
+        _line_intersection(top, left),
+        _line_intersection(top, right),
+        _line_intersection(bottom, right),
+        _line_intersection(bottom, left),
+    ]
+    if any(point is None for point in quad):
+        return {"quad": fallback, "method": "fallback-parallel-lines", "detected": False}
+
+    quad = _clean_detected_cover_quad(quad)
+    if not _valid_cover_quad(quad, width, height):
+        return {"quad": fallback, "method": "fallback-invalid-auto-quad", "detected": False}
+
+    return {"quad": quad, "method": "auto-hough-lines", "detected": True}
 
 
 def extract_song_cover(frame_path=LATEST_FRAME):
@@ -307,7 +482,8 @@ def extract_song_cover(frame_path=LATEST_FRAME):
         return None
 
     height, width = frame.shape[:2]
-    quad = _selection_cover_quad(width, height)
+    detection = detect_selection_cover_quad(frame)
+    quad = detection["quad"]
     bgra = cv2.cvtColor(frame, cv2.COLOR_BGR2BGRA)
 
     target_width = NORMALIZED_COVER_WIDTH
@@ -343,6 +519,9 @@ def extract_song_cover(frame_path=LATEST_FRAME):
     return {
         "ok": True,
         "sourceQuad": quad,
+        "sourceBBox": _quad_bbox(quad),
+        "detectionMethod": detection["method"],
+        "detected": detection["detected"],
         "targetQuad": target_quad,
         "width": target_width,
         "height": target_height,
