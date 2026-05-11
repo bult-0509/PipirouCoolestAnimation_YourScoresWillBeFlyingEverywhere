@@ -42,6 +42,15 @@
     <div class="status-panel">
       当前槽位(x): <span id="status-x">0</span>
     </div>
+    <div class="camera-control">
+      <label for="camera-select">摄像头</label>
+      <div class="camera-row">
+        <select id="camera-select">
+          <option value="">自动选择</option>
+        </select>
+        <button id="btn-refresh-cameras" class="icon-btn" type="button" title="刷新摄像头">↻</button>
+      </div>
+    </div>
     <div class="api-status" id="api-status" data-mode="idle">等待本地识别服务</div>
     <div class="button-group">
       <button id="btn-1" class="btn">1. 选歌识别</button>

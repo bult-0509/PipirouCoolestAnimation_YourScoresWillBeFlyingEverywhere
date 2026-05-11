@@ -4,7 +4,7 @@ import os
 import platform
 import time
 from http import HTTPStatus
-from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+from http.server import HTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
 
 try:
@@ -16,6 +16,7 @@ except ImportError:
 ROOT_DIR = Path(__file__).resolve().parent
 DEBUG_DIR = ROOT_DIR / "debug"
 LATEST_FRAME = DEBUG_DIR / "latest_frame.jpg"
+DEFAULT_CAMERA_SCAN_LIMIT = int(os.environ.get("CAMERA_SCAN_LIMIT", "6"))
 
 MOCK_SONGS = [
     {
@@ -61,9 +62,98 @@ def _read_json(handler):
 
 
 def _camera_backend():
-    if platform.system() == "Windows" and cv2 is not None:
+    if cv2 is None:
+        return 0
+
+    system = platform.system()
+    if system == "Windows":
         return cv2.CAP_DSHOW
+    if system == "Darwin":
+        return cv2.CAP_AVFOUNDATION
+    if system == "Linux":
+        return cv2.CAP_V4L2
     return 0
+
+
+def _camera_backend_name():
+    system = platform.system()
+    if system == "Windows":
+        return "DirectShow"
+    if system == "Darwin":
+        return "AVFoundation"
+    if system == "Linux":
+        return "V4L2"
+    return "OpenCV default"
+
+
+def _open_capture(index):
+    backend = _camera_backend()
+    if backend:
+        return cv2.VideoCapture(index, backend)
+    return cv2.VideoCapture(index)
+
+
+def _camera_candidates(selected_index=None):
+    candidates = []
+    if selected_index is not None:
+        candidates.append(selected_index)
+    candidates.extend(range(DEFAULT_CAMERA_SCAN_LIMIT))
+
+    unique = []
+    seen = set()
+    for index in candidates:
+        value = int(index)
+        if value not in seen:
+            seen.add(value)
+            unique.append(value)
+    return unique
+
+
+def list_cameras(limit=DEFAULT_CAMERA_SCAN_LIMIT):
+    if cv2 is None:
+        return {
+            "ok": False,
+            "opencv": False,
+            "platform": platform.system(),
+            "backend": _camera_backend_name(),
+            "cameras": [],
+            "reason": "opencv-python is not installed",
+        }
+
+    cameras = []
+    for index in range(max(0, int(limit))):
+        cap = _open_capture(index)
+        opened = cap.isOpened()
+
+        width = None
+        height = None
+        if opened:
+            width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 0) or None
+            height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 0) or None
+
+        cap.release()
+
+        if opened:
+            label = f"Camera {index}"
+            if width and height:
+                label = f"{label} ({width}x{height})"
+            cameras.append(
+                {
+                    "index": index,
+                    "label": label,
+                    "width": width,
+                    "height": height,
+                }
+            )
+
+    return {
+        "ok": True,
+        "opencv": True,
+        "platform": platform.system(),
+        "backend": _camera_backend_name(),
+        "cameras": cameras,
+        "scanLimit": int(limit),
+    }
 
 
 def capture_frame(camera_indices):
@@ -77,10 +167,8 @@ def capture_frame(camera_indices):
         }
 
     DEBUG_DIR.mkdir(exist_ok=True)
-    backend = _camera_backend()
-
     for index in camera_indices:
-        cap = cv2.VideoCapture(index, backend)
+        cap = _open_capture(index)
         if not cap.isOpened():
             cap.release()
             continue
@@ -146,9 +234,15 @@ class AppHandler(SimpleHTTPRequestHandler):
                 {
                     "ok": True,
                     "opencv": cv2 is not None,
+                    "platform": platform.system(),
+                    "backend": _camera_backend_name(),
+                    "scanLimit": DEFAULT_CAMERA_SCAN_LIMIT,
                     "cwd": str(ROOT_DIR),
                 },
             )
+            return
+        if self.path.startswith("/api/cameras"):
+            _json_response(self, HTTPStatus.OK, list_cameras())
             return
         super().do_GET()
 
@@ -161,10 +255,22 @@ class AppHandler(SimpleHTTPRequestHandler):
             body = _read_json(self)
             kind = body.get("kind")
             slot = int(body.get("slot", 0))
-            indices = body.get("cameraIndices") or [0, 1]
+            selected_index = body.get("cameraIndex")
+            if selected_index in ("", None):
+                selected_index = None
+            else:
+                selected_index = int(selected_index)
+            if body.get("cameraIndices"):
+                indices = body.get("cameraIndices")
+            elif selected_index is not None:
+                indices = [selected_index]
+            else:
+                indices = _camera_candidates()
             camera_indices = [int(value) for value in indices]
 
             capture = capture_frame(camera_indices)
+            capture["requestedCameraIndex"] = selected_index
+            capture["cameraIndices"] = camera_indices
 
             if kind == "song":
                 payload = {
@@ -202,7 +308,7 @@ def main():
     parser.add_argument("--port", default=int(os.environ.get("PORT", "8765")), type=int)
     args = parser.parse_args()
 
-    server = ThreadingHTTPServer((args.host, args.port), AppHandler)
+    server = HTTPServer((args.host, args.port), AppHandler)
     print(f"Serving HUD and API at http://{args.host}:{args.port}/")
     print("API: POST /api/recognize {kind: song|score, slot: number}")
     if cv2 is None:

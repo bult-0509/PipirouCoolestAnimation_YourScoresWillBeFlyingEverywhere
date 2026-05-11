@@ -69,6 +69,54 @@ body {
   color: #aaa;
 }
 
+.camera-control {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: #ccc;
+  font-size: 0.86rem;
+}
+
+.camera-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 34px;
+  gap: 8px;
+  width: 260px;
+}
+
+.camera-row select {
+  min-width: 0;
+  height: 34px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  color: #fff;
+  padding: 0 8px;
+  font-size: 0.9rem;
+  outline: none;
+}
+
+.camera-row select option {
+  background: #111;
+  color: #fff;
+}
+
+.icon-btn {
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  color: #fff;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.icon-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
 .api-status {
   max-width: 260px;
   min-height: 34px;

@@ -8,6 +8,8 @@ const recognizedSongs = [];
 // DOM Elements
 const statusX = document.getElementById('status-x');
 const apiStatus = document.getElementById('api-status');
+const cameraSelect = document.getElementById('camera-select');
+const refreshCamerasButton = document.getElementById('btn-refresh-cameras');
 const barsWrapper = document.getElementById('bars-wrapper');
 const dynLayer = document.getElementById('dynamic-layer');
 const summaryInfo = document.getElementById('summary-info');
@@ -29,6 +31,59 @@ function updateStatus() {
 function setApiStatus(text, mode = 'idle') {
   apiStatus.innerText = text;
   apiStatus.dataset.mode = mode;
+}
+
+function selectedCameraIndex() {
+  if (!cameraSelect || cameraSelect.value === '') {
+    return null;
+  }
+  return Number.parseInt(cameraSelect.value, 10);
+}
+
+function setCameraOptions(cameras, selectedValue = '') {
+  cameraSelect.innerHTML = '<option value="">自动选择</option>';
+
+  for (const camera of cameras) {
+    const option = document.createElement('option');
+    option.value = String(camera.index);
+    option.textContent = camera.label || `Camera ${camera.index}`;
+    cameraSelect.appendChild(option);
+  }
+
+  if ([...cameraSelect.options].some(option => option.value === selectedValue)) {
+    cameraSelect.value = selectedValue;
+  } else {
+    cameraSelect.value = '';
+  }
+}
+
+async function refreshCameras() {
+  const previousValue = cameraSelect.value;
+  refreshCamerasButton.disabled = true;
+  setApiStatus('正在扫描摄像头...', 'busy');
+
+  try {
+    const response = await fetch('/api/cameras');
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+
+    const payload = await response.json();
+    setCameraOptions(payload.cameras || [], previousValue);
+
+    if (!payload.opencv) {
+      setApiStatus(`无法扫描摄像头：${payload.reason || 'OpenCV 不可用'}`, 'warn');
+    } else if ((payload.cameras || []).length === 0) {
+      setApiStatus(`未发现摄像头，后端：${payload.backend}`, 'warn');
+    } else {
+      setApiStatus(`发现 ${(payload.cameras || []).length} 个摄像头，后端：${payload.backend}`, 'ok');
+    }
+  } catch (error) {
+    setCameraOptions([], previousValue);
+    setApiStatus(`摄像头列表不可用：${error.message}`, 'warn');
+  } finally {
+    refreshCamerasButton.disabled = false;
+  }
 }
 
 function escapeHTML(value) {
@@ -64,7 +119,11 @@ async function recognize(kind, slot) {
     const response = await fetch('/api/recognize', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ kind, slot })
+      body: JSON.stringify({
+        kind,
+        slot,
+        cameraIndex: selectedCameraIndex()
+      })
     });
 
     if (!response.ok) {
@@ -77,7 +136,7 @@ async function recognize(kind, slot) {
     }
 
     const captureText = payload.capture?.ok
-      ? `已拍照 ${payload.capture.width}x${payload.capture.height}`
+      ? `摄像头 ${payload.capture.cameraIndex} 已拍照 ${payload.capture.width}x${payload.capture.height}`
       : `后端在线，使用模拟识别：${payload.capture?.reason || '未取得画面'}`;
     setApiStatus(captureText, payload.capture?.ok ? 'ok' : 'warn');
     return payload;
@@ -437,3 +496,5 @@ document.getElementById('btn-5').addEventListener('click', async () => {
 
 updateStatus();
 setApiStatus('等待本地识别服务', 'idle');
+refreshCamerasButton.addEventListener('click', refreshCameras);
+refreshCameras();
