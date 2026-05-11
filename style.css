@@ -95,7 +95,23 @@ body {
   outline: none;
 }
 
+.camera-control > select {
+  width: 260px;
+  height: 34px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  color: #fff;
+  padding: 0 8px;
+  font-size: 0.9rem;
+  outline: none;
+}
+
 .camera-row select option {
+  background: #111;
+  color: #fff;
+}
+
+.camera-control > select option {
   background: #111;
   color: #fff;
 }

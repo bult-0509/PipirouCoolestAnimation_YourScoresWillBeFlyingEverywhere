@@ -10,6 +10,7 @@ const statusX = document.getElementById('status-x');
 const apiStatus = document.getElementById('api-status');
 const cameraSelect = document.getElementById('camera-select');
 const refreshCamerasButton = document.getElementById('btn-refresh-cameras');
+const sampleSelect = document.getElementById('sample-select');
 const barsWrapper = document.getElementById('bars-wrapper');
 const dynLayer = document.getElementById('dynamic-layer');
 const summaryInfo = document.getElementById('summary-info');
@@ -40,6 +41,13 @@ function selectedCameraIndex() {
   return Number.parseInt(cameraSelect.value, 10);
 }
 
+function selectedSampleFrame() {
+  if (!sampleSelect || sampleSelect.value === '') {
+    return null;
+  }
+  return sampleSelect.value;
+}
+
 function setCameraOptions(cameras, selectedValue = '') {
   cameraSelect.innerHTML = '<option value="">自动选择</option>';
 
@@ -54,6 +62,25 @@ function setCameraOptions(cameras, selectedValue = '') {
     cameraSelect.value = selectedValue;
   } else {
     cameraSelect.value = '';
+  }
+}
+
+function setSampleOptions(samples, selectedValue = sampleSelect.value) {
+  sampleSelect.innerHTML = `
+    <option value="">关闭</option>
+    <option value="auto">按按钮自动选择</option>
+  `;
+
+  for (const sample of samples) {
+    if (!sample.exists) continue;
+    const option = document.createElement('option');
+    option.value = sample.key;
+    option.textContent = sample.label;
+    sampleSelect.appendChild(option);
+  }
+
+  if ([...sampleSelect.options].some(option => option.value === selectedValue)) {
+    sampleSelect.value = selectedValue;
   }
 }
 
@@ -83,6 +110,19 @@ async function refreshCameras() {
     setApiStatus(`摄像头列表不可用：${error.message}`, 'warn');
   } finally {
     refreshCamerasButton.disabled = false;
+  }
+}
+
+async function refreshSamples() {
+  try {
+    const response = await fetch('/api/samples');
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    const payload = await response.json();
+    setSampleOptions(payload.samples || []);
+  } catch (error) {
+    setApiStatus(`测试图列表不可用：${error.message}`, 'warn');
   }
 }
 
@@ -122,7 +162,8 @@ async function recognize(kind, slot) {
       body: JSON.stringify({
         kind,
         slot,
-        cameraIndex: selectedCameraIndex()
+        cameraIndex: selectedCameraIndex(),
+        sampleFrame: selectedSampleFrame()
       })
     });
 
@@ -135,9 +176,11 @@ async function recognize(kind, slot) {
       throw new Error(payload.error || 'recognition failed');
     }
 
-    const captureText = payload.capture?.ok
-      ? `摄像头 ${payload.capture.cameraIndex} 已拍照 ${payload.capture.width}x${payload.capture.height}`
-      : `后端在线，使用模拟识别：${payload.capture?.reason || '未取得画面'}`;
+    const captureText = payload.capture?.ok && payload.capture?.source === 'sample'
+      ? `测试图 ${payload.capture.sampleLabel} 已载入`
+      : payload.capture?.ok
+        ? `摄像头 ${payload.capture.cameraIndex} 已拍照 ${payload.capture.width}x${payload.capture.height}`
+        : `后端在线，使用模拟识别：${payload.capture?.reason || '未取得画面'}`;
     setApiStatus(captureText, payload.capture?.ok ? 'ok' : 'warn');
     return payload;
   } catch (error) {
@@ -498,3 +541,4 @@ updateStatus();
 setApiStatus('等待本地识别服务', 'idle');
 refreshCamerasButton.addEventListener('click', refreshCameras);
 refreshCameras();
+refreshSamples();

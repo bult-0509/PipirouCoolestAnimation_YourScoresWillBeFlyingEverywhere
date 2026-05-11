@@ -64,13 +64,26 @@ If no camera is listed, check OS camera permissions, whether iVCam or another
 virtual camera is running, and whether another application is already holding the
 camera.
 
+## Test Images
+
+`Choose.jpg` and `Score.jpg` are committed as sample inputs from the current
+`master` branch. The frontend exposes a `测试输入` selector:
+
+- `关闭`: use the selected camera.
+- `按按钮自动选择`: use `Choose.jpg` for `选歌识别` and `Score.jpg` for `分数识别`.
+- `Choose.jpg` or `Score.jpg`: force one sample image for every recognition call.
+
+The sample image is copied to `debug/latest_frame.jpg` and returned through the
+same `capture.frameUrl` field as a real camera frame. This keeps the frontend,
+backend, and animation protocol testable even when no camera is available.
+
 ## API
 
 ```http
 POST /api/recognize
 Content-Type: application/json
 
-{"kind":"song","slot":0,"cameraIndex":0}
+{"kind":"song","slot":0,"cameraIndex":0,"sampleFrame":"auto"}
 ```
 
 Response:

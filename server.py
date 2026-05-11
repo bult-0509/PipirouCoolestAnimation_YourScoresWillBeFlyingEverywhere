@@ -2,6 +2,7 @@ import argparse
 import json
 import os
 import platform
+import shutil
 import time
 from http import HTTPStatus
 from http.server import HTTPServer, SimpleHTTPRequestHandler
@@ -17,6 +18,16 @@ ROOT_DIR = Path(__file__).resolve().parent
 DEBUG_DIR = ROOT_DIR / "debug"
 LATEST_FRAME = DEBUG_DIR / "latest_frame.jpg"
 DEFAULT_CAMERA_SCAN_LIMIT = int(os.environ.get("CAMERA_SCAN_LIMIT", "6"))
+SAMPLE_FRAMES = {
+    "song": {
+        "label": "Choose.jpg",
+        "path": ROOT_DIR / "Choose.jpg",
+    },
+    "score": {
+        "label": "Score.jpg",
+        "path": ROOT_DIR / "Score.jpg",
+    },
+}
 
 MOCK_SONGS = [
     {
@@ -156,10 +167,75 @@ def list_cameras(limit=DEFAULT_CAMERA_SCAN_LIMIT):
     }
 
 
+def list_sample_frames():
+    return {
+        "ok": True,
+        "samples": [
+            {
+                "key": key,
+                "label": sample["label"],
+                "exists": sample["path"].exists(),
+                "url": f"/{sample['path'].name}" if sample["path"].exists() else None,
+            }
+            for key, sample in SAMPLE_FRAMES.items()
+        ],
+    }
+
+
+def _sample_key_for(kind, requested_sample):
+    if requested_sample in SAMPLE_FRAMES:
+        return requested_sample
+    if requested_sample == "auto" and kind in SAMPLE_FRAMES:
+        return kind
+    return None
+
+
+def capture_sample_frame(sample_key):
+    sample = SAMPLE_FRAMES.get(sample_key)
+    if sample is None:
+        return None
+
+    source_path = sample["path"]
+    if not source_path.exists():
+        return {
+            "ok": False,
+            "source": "sample",
+            "reason": f"sample frame not found: {source_path.name}",
+            "frameUrl": None,
+            "width": None,
+            "height": None,
+            "sampleKey": sample_key,
+            "sampleLabel": sample["label"],
+        }
+
+    DEBUG_DIR.mkdir(exist_ok=True)
+    shutil.copyfile(source_path, LATEST_FRAME)
+
+    width = None
+    height = None
+    if cv2 is not None:
+        frame = cv2.imread(str(LATEST_FRAME))
+        if frame is not None:
+            height, width = frame.shape[:2]
+
+    return {
+        "ok": True,
+        "source": "sample",
+        "reason": None,
+        "cameraIndex": None,
+        "frameUrl": f"/debug/latest_frame.jpg?t={int(time.time() * 1000)}",
+        "width": width,
+        "height": height,
+        "sampleKey": sample_key,
+        "sampleLabel": sample["label"],
+    }
+
+
 def capture_frame(camera_indices):
     if cv2 is None:
         return {
             "ok": False,
+            "source": "camera",
             "reason": "opencv-python is not installed",
             "frameUrl": None,
             "width": None,
@@ -188,6 +264,7 @@ def capture_frame(camera_indices):
             height, width = frame.shape[:2]
             return {
                 "ok": True,
+                "source": "camera",
                 "reason": None,
                 "cameraIndex": index,
                 "frameUrl": f"/debug/latest_frame.jpg?t={int(time.time() * 1000)}",
@@ -197,6 +274,7 @@ def capture_frame(camera_indices):
 
     return {
         "ok": False,
+        "source": "camera",
         "reason": f"no camera opened from indices {camera_indices}",
         "frameUrl": None,
         "width": None,
@@ -244,6 +322,9 @@ class AppHandler(SimpleHTTPRequestHandler):
         if self.path.startswith("/api/cameras"):
             _json_response(self, HTTPStatus.OK, list_cameras())
             return
+        if self.path == "/api/samples":
+            _json_response(self, HTTPStatus.OK, list_sample_frames())
+            return
         super().do_GET()
 
     def do_POST(self):
@@ -255,6 +336,7 @@ class AppHandler(SimpleHTTPRequestHandler):
             body = _read_json(self)
             kind = body.get("kind")
             slot = int(body.get("slot", 0))
+            sample_key = _sample_key_for(kind, body.get("sampleFrame"))
             selected_index = body.get("cameraIndex")
             if selected_index in ("", None):
                 selected_index = None
@@ -268,7 +350,9 @@ class AppHandler(SimpleHTTPRequestHandler):
                 indices = _camera_candidates()
             camera_indices = [int(value) for value in indices]
 
-            capture = capture_frame(camera_indices)
+            capture = capture_sample_frame(sample_key) if sample_key else None
+            if capture is None:
+                capture = capture_frame(camera_indices)
             capture["requestedCameraIndex"] = selected_index
             capture["cameraIndices"] = camera_indices
 
