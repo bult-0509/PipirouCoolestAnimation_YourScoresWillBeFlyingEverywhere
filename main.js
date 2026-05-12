@@ -250,8 +250,8 @@ async function showSourceFrame(song) {
   return true;
 }
 
-function framePixelRectToViewportRect(frameWidth, frameHeight, bbox) {
-  if (!frameWidth || !frameHeight || !bbox) {
+function frameViewportMapping(frameWidth, frameHeight) {
+  if (!frameWidth || !frameHeight) {
     return null;
   }
 
@@ -261,16 +261,46 @@ function framePixelRectToViewportRect(frameWidth, frameHeight, bbox) {
   const offsetX = (window.innerWidth - renderedWidth) / 2;
   const offsetY = (window.innerHeight - renderedHeight) / 2;
 
+  return { scale, renderedWidth, renderedHeight, offsetX, offsetY };
+}
+
+function mapFramePointToViewport(point, mapping) {
   return {
-    left: offsetX + bbox.x * scale,
-    top: offsetY + bbox.y * scale,
-    width: bbox.width * scale,
-    height: bbox.height * scale
+    x: mapping.offsetX + point[0] * mapping.scale,
+    y: mapping.offsetY + point[1] * mapping.scale
   };
 }
 
-function coverSourceRect(song) {
-  return framePixelRectToViewportRect(song.sourceWidth, song.sourceHeight, song.coverCrop?.sourceBBox);
+function coverSourcePlacement(song) {
+  const sourceQuad = song.coverCrop?.sourceQuad;
+  const mapping = frameViewportMapping(song.sourceWidth, song.sourceHeight);
+  if (!mapping || !Array.isArray(sourceQuad) || sourceQuad.length !== 4) {
+    return null;
+  }
+
+  const points = sourceQuad.map(point => mapFramePointToViewport(point, mapping));
+  const left = Math.min(...points.map(point => point.x));
+  const top = Math.min(...points.map(point => point.y));
+  const right = Math.max(...points.map(point => point.x));
+  const bottom = Math.max(...points.map(point => point.y));
+  const width = right - left;
+  const height = bottom - top;
+
+  if (width <= 0 || height <= 0) {
+    return null;
+  }
+
+  return {
+    left,
+    top,
+    width,
+    height,
+    clipPath: points
+      .map(point => `${((point.x - left) / width) * 100}% ${((point.y - top) / height) * 100}%`)
+      .join(', '),
+    backgroundSize: `${mapping.renderedWidth}px ${mapping.renderedHeight}px`,
+    backgroundPosition: `${mapping.offsetX - left}px ${mapping.offsetY - top}px`
+  };
 }
 
 function buildSongInfoHTML(song, slot, coverOpacity = '0') {
@@ -312,24 +342,29 @@ function updateSummary() {
 
 async function playSongAnimation(song, slot) {
   await showSourceFrame(song);
-  const sourceRect = coverSourceRect(song);
+  const sourcePlacement = coverSourcePlacement(song);
 
   const el = document.createElement('div');
-  el.className = 'dyn-element';
-  if (sourceRect) {
-    el.style.left = (sourceRect.left + sourceRect.width / 2) + 'px';
-    el.style.top = (sourceRect.top + sourceRect.height / 2) + 'px';
-    const sourceScale = Math.max(sourceRect.width / 128, sourceRect.height / 72);
-    el.style.transform = `translate(-50%, -50%) scale(${sourceScale})`;
+  el.className = 'dyn-element cover-flight';
+  if (sourcePlacement) {
+    el.classList.add('source-origin');
+    el.style.left = sourcePlacement.left + 'px';
+    el.style.top = sourcePlacement.top + 'px';
+    el.style.width = sourcePlacement.width + 'px';
+    el.style.height = sourcePlacement.height + 'px';
+    el.style.transform = 'none';
   } else {
     el.style.left = '20%';
     el.style.top = '40%';
+    el.style.width = '128px';
+    el.style.height = '72px';
     el.style.transform = 'translate(-50%, -50%) scale(1.5)';
   }
 
   el.innerHTML = `
-    <div class="cover-wrapper">
-      <div class="dyn-cover"${coverStyle(song)}></div>
+    <div class="source-cut-cover"></div>
+    <div class="cover-wrapper flight-cover-wrapper">
+      <div class="dyn-cover flight-cover"${coverStyle(song)}></div>
       <div class="bottom-texts" style="opacity: 0;">
         <div class="diff-tag diff-${escapeHTML(song.diff)}">${escapeHTML(song.diff)}</div>
         <div class="song-name">${escapeHTML(song.name)}</div>
@@ -338,12 +373,33 @@ async function playSongAnimation(song, slot) {
   `;
   dynLayer.appendChild(el);
 
+  const sourceCut = el.querySelector('.source-cut-cover');
+  if (sourcePlacement && sourceCut) {
+    sourceCut.style.backgroundImage = `url('${song.sourceFrame}')`;
+    sourceCut.style.backgroundSize = sourcePlacement.backgroundSize;
+    sourceCut.style.backgroundPosition = sourcePlacement.backgroundPosition;
+    sourceCut.style.clipPath = `polygon(${sourcePlacement.clipPath})`;
+  } else if (sourceCut) {
+    sourceCut.remove();
+  }
+
   await sleep(50);
   const dynCover = el.querySelector('.dyn-cover');
-  dynCover.classList.add('show-cover');
+  if (sourcePlacement) {
+    el.classList.add('source-cut-ready');
+    await sleep(520);
+    el.classList.add('source-revealed');
+    dynCover.classList.add('show-cover');
+    await sleep(260);
+  } else {
+    dynCover.classList.add('show-cover');
+  }
+
+  el.style.width = '128px';
+  el.style.height = '72px';
   el.classList.add('center');
 
-  await sleep(600);
+  await sleep(sourcePlacement ? 1150 : 600);
   el.querySelector('.bottom-texts').style.opacity = '1';
 
   await sleep(1400);

@@ -91,10 +91,11 @@ debug/latest_cover.png
 The output is not a rectangle: it is a transparent PNG whose visible area is a
 parallelogram matching the frontend HUD cover/score-frame angle. This removes the
 camera perspective distortion while preserving the Phigros-style slanted shape.
-The frontend receives this image as `song.coverImage`, and it also receives the
-original-frame `coverCrop.sourceBBox`. During animation the browser shows the
-captured source frame and starts the flying cover from the detected source
-position, then flies the normalized parallelogram into the HUD slot.
+The frontend receives this image as `song.coverImage`, plus the original-frame
+`coverCrop.sourceQuad` and `coverCrop.sourceBBox`. During animation the browser
+shows the captured source frame, clips the art in-place from the detected source
+quadrilateral, fades that into the normalized parallelogram at the same origin,
+then flies it to the center and into the HUD slot with eased motion.
 
 The future cover-library recognizer should replace `match_cover_from_library()`
 in `server.py`. Until that library exists, the server returns mock song metadata
