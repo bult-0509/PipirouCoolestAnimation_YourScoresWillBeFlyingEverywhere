@@ -12,6 +12,11 @@
     <div class="bg-overlay"></div>
   </div>
 
+  <!-- 原始拍照帧：选歌动画从曲绘在此帧中的位置起飞 -->
+  <div class="source-frame-layer hidden" id="source-frame-layer">
+    <img id="source-frame-image" alt="latest captured frame">
+  </div>
+
   <!-- HUD 容器 -->
   <div class="hud-container" id="hud-container">
     <!-- 侧边栏，初始时在右侧半隐藏 -->
@@ -42,6 +47,23 @@
     <div class="status-panel">
       当前槽位(x): <span id="status-x">0</span>
     </div>
+    <div class="camera-control">
+      <label for="camera-select">摄像头</label>
+      <div class="camera-row">
+        <select id="camera-select">
+          <option value="">自动选择</option>
+        </select>
+        <button id="btn-refresh-cameras" class="icon-btn" type="button" title="刷新摄像头">↻</button>
+      </div>
+    </div>
+    <div class="camera-control">
+      <label for="sample-select">测试输入</label>
+      <select id="sample-select">
+        <option value="">关闭</option>
+        <option value="auto">按按钮自动选择</option>
+      </select>
+    </div>
+    <div class="api-status" id="api-status" data-mode="idle">等待本地识别服务</div>
     <div class="button-group">
       <button id="btn-1" class="btn">1. 选歌识别</button>
       <button id="btn-2" class="btn">2. 分数识别</button>
