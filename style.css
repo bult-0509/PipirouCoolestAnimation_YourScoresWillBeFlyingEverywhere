@@ -338,7 +338,18 @@ body {
 .cover-flight .flight-cover {
   width: 100%;
   height: 100%;
-  transition: opacity 0.26s var(--ease-out), box-shadow 1.2s var(--ease-in-out);
+  transition:
+    clip-path 1.15s cubic-bezier(0.2, 0.78, 0.18, 1),
+    opacity 1.15s cubic-bezier(0.2, 0.78, 0.18, 1),
+    box-shadow 1.2s var(--ease-in-out);
+}
+
+.source-origin .flight-cover {
+  clip-path: polygon(var(--source-cover-clip));
+}
+
+.source-origin.source-flight-start .flight-cover {
+  clip-path: polygon(15.078125% 0, 100% 0, 84.921875% 100%, 0 100%);
 }
 
 .source-cut-cover {
@@ -352,9 +363,14 @@ body {
 
 .source-origin.source-cut-ready .source-cut-cover {
   opacity: 1;
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.85);
 }
 
 .source-origin.source-revealed .source-cut-cover {
+  opacity: 0.42;
+}
+
+.source-origin.source-flight-start .source-cut-cover {
   opacity: 0;
 }
 
@@ -400,6 +416,14 @@ body {
 }
 
 .dyn-cover.show-cover {
+  opacity: 1;
+}
+
+.source-origin.source-revealed .flight-cover.show-cover {
+  opacity: 0.58;
+}
+
+.source-origin.source-flight-start .flight-cover.show-cover {
   opacity: 1;
 }
 

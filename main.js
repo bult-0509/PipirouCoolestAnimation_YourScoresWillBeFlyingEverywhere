@@ -26,6 +26,8 @@ const fallbackSongs = [
 
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 const forceReflow = (element) => element.offsetHeight;
+const SOURCE_CUT_HOLD_MS = 1200;
+const SOURCE_OVERLAY_HOLD_MS = 2200;
 
 function updateStatus() {
   statusX.innerText = `song:${songIndex} score:${scoreIndex}`;
@@ -374,23 +376,25 @@ async function playSongAnimation(song, slot) {
   dynLayer.appendChild(el);
 
   const sourceCut = el.querySelector('.source-cut-cover');
+  const dynCover = el.querySelector('.dyn-cover');
   if (sourcePlacement && sourceCut) {
     sourceCut.style.backgroundImage = `url('${song.sourceFrame}')`;
     sourceCut.style.backgroundSize = sourcePlacement.backgroundSize;
     sourceCut.style.backgroundPosition = sourcePlacement.backgroundPosition;
     sourceCut.style.clipPath = `polygon(${sourcePlacement.clipPath})`;
+    dynCover.style.setProperty('--source-cover-clip', sourcePlacement.clipPath);
   } else if (sourceCut) {
     sourceCut.remove();
   }
 
   await sleep(50);
-  const dynCover = el.querySelector('.dyn-cover');
   if (sourcePlacement) {
     el.classList.add('source-cut-ready');
-    await sleep(520);
+    await sleep(SOURCE_CUT_HOLD_MS);
     el.classList.add('source-revealed');
     dynCover.classList.add('show-cover');
-    await sleep(260);
+    await sleep(SOURCE_OVERLAY_HOLD_MS);
+    el.classList.add('source-flight-start');
   } else {
     dynCover.classList.add('show-cover');
   }
