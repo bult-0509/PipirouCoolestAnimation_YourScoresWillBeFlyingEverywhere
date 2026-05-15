@@ -1,8 +1,8 @@
 # bult直播间可能会用到的比较帅的推课题视觉效果增强工具！
 
 qwq我真的不会写代码，前端完全由Gemini 3.1 Pro实现，后端完全由Claude Opus 4.6实现！
-idea by @bult_0509 [https://space.bilibili.com/291942700
-cowork with @雪跡 [https://space.bilibili.com/405061756
+idea by @bult_0509 https://space.bilibili.com/291942700
+cowork with @雪跡 https://space.bilibili.com/405061756
 
 ~~关注bult_0509谢谢喵关注雪迹谢谢喵关注bult_0509谢谢喵关注雪迹谢谢喵关注bult_0509谢谢喵关注雪迹谢谢喵关注bult_0509谢谢喵关注雪迹谢谢喵关注bult_0509谢谢喵关注雪迹谢谢喵关注bult_0509谢谢喵关注雪迹谢谢喵关注bult_0509谢谢喵关注雪迹谢谢喵关注bult_0509谢谢喵关注雪迹谢谢喵关注bult_0509谢谢喵关注雪迹谢谢喵关注bult_0509谢谢喵关注雪迹谢谢喵关注bult_0509谢谢喵关注雪迹谢谢喵关注bult_0509谢谢喵关注雪迹谢谢喵关注bult_0509谢谢喵关注雪迹谢谢喵关注bult_0509谢谢喵关注雪迹谢谢喵关注bult_0509谢谢喵关注雪迹谢谢喵关注bult_0509谢谢喵关注雪迹谢谢喵关注bult_0509谢谢喵关注雪迹谢谢喵关注bult_0509谢谢喵关注雪迹谢谢喵关注bult_0509谢谢喵关注雪迹谢谢喵关注bult_0509谢谢喵关注雪迹谢谢喵关注bult_0509谢谢喵关注雪迹谢谢喵关注bult_0509谢谢喵关注雪迹谢谢喵！！！
 
